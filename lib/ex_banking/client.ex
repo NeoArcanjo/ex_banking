@@ -10,11 +10,13 @@ defmodule ExBanking.Client do
 
   ## GenServer API
 
+  @spec start_link(any) :: :ignore | {:error, any} | {:ok, pid}
   def start_link(name) do
     data = %{name: name, balance: [Money.new(0)], transactions: :queue.new()}
     GenServer.start_link(__MODULE__, data, name: via_tuple(name))
   end
 
+  @spec log_state(any) :: any
   def log_state(process_name) do
     process_name |> via_tuple() |> GenServer.call(:log_state)
   end
@@ -24,6 +26,7 @@ defmodule ExBanking.Client do
     process_name |> via_tuple() |> GenServer.call({:get_balance, currency})
   end
 
+  @spec transfer(any, any, any, any) :: any
   def transfer(process_name, to_user, amount, currency) when is_float(amount) do
     amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
     transfer(process_name, to_user, amount, currency)
