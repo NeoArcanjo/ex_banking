@@ -27,32 +27,23 @@ defmodule ExBanking.Client do
   end
 
   @spec transfer(any, any, any, any) :: any
-  def transfer(process_name, to_user, amount, currency) when is_float(amount) do
-    amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
-    transfer(process_name, to_user, amount, currency)
-  end
-
   def transfer(process_name, to_user, amount, currency) do
+    # amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
+    {:ok, amount} = Money.parse(amount, currency)
     process_name |> via_tuple() |> GenServer.call({:transfer, to_user, amount, currency})
   end
 
   @spec deposit(String.t(), number, String.t()) :: number
-  def deposit(process_name, amount, currency) when is_float(amount) do
-    amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
-    deposit(process_name, amount, currency)
-  end
-
   def deposit(process_name, amount, currency) do
+    # amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
+    {:ok, amount} = Money.parse(amount, currency)
     process_name |> via_tuple() |> GenServer.call({:deposit, amount, currency})
   end
 
   @spec withdraw(String.t(), number, String.t()) :: number
-  def withdraw(process_name, amount, currency) when is_float(amount) do
-    amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
-    withdraw(process_name, amount, currency)
-  end
-
   def withdraw(process_name, amount, currency) do
+    # amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
+    {:ok, amount} = Money.parse(amount, currency)
     process_name |> via_tuple() |> GenServer.call({:withdraw, amount, currency})
   end
 
@@ -104,7 +95,7 @@ defmodule ExBanking.Client do
       {:reply, :not_enough_money, state}
     else
       Logger.info("New balance: #{Money.to_string(balance)}")
-      Logger.info("Sending #{Money.to_string(Money.new(amount, currency))} to #{to_user}")
+      Logger.info("Sending #{Money.to_string(amount)} to #{to_user}")
 
       to_user
       |> via_tuple()
@@ -132,7 +123,7 @@ defmodule ExBanking.Client do
   @impl true
   def handle_call({:withdraw, amount, currency}, _from, state) do
     Logger.info(
-      "Withdrawing #{Money.to_string(Money.new(amount, currency))} from #{print_money(state[:balance], currency)}"
+      "Withdrawing #{Money.to_string(amount)} from #{print_money(state[:balance], currency)}"
     )
 
     balance = decrease(state[:balance], amount, currency)
@@ -151,7 +142,7 @@ defmodule ExBanking.Client do
   @impl true
   def handle_call({:deposit, amount, currency}, _from, state) do
     Logger.info(
-      "Depositing #{Money.to_string(Money.new(amount, currency))} to #{print_money(state[:balance], currency)}"
+      "Depositing #{Money.to_string(amount)} to #{print_money(state[:balance], currency)}"
     )
 
     balance = increase(state[:balance], amount, currency)
@@ -178,7 +169,7 @@ defmodule ExBanking.Client do
     balance = increase(state[:balance], amount, currency)
 
     Logger.info(
-      "Received #{Money.to_string(Money.new(amount, currency))} to #{Money.to_string(balance)}"
+      "Received #{Money.to_string(amount)} to #{Money.to_string(balance)}"
     )
 
     state = set_balance(state, balance, currency)
