@@ -15,10 +15,11 @@ General acceptance criteria
 
 ## Money amounts
 
- - Money amount of any currency should not be negative.
- - Application should provide 2 decimal precision of money amount for any currency.
- - Amount of money incoming to the system should be equal to amount of money inside the system + amount of withdraws (money should not appear or disappear accidentally).
- - User and currency type is any string. Case sensitive. New currencies / users can be added dynamically in runtime. In the application, there should be a special public function (described below) for creating users.  - Currencies should be created automatically (if needed).
+ - [x] Money amount of any currency should not be negative.
+ - [x] Application should provide 2 decimal precision of money amount for any currency.
+ - [x] Amount of money incoming to the system should be equal to amount of money inside the system + amount of withdraws (money should not appear or disappear accidentally).
+ - [x] User and currency type is any string. Case sensitive. New currencies / users can be added dynamically in runtime. In the application, there should be a special public function (described below) for creating users.
+ - [x] Currencies should be created automatically (if needed).
 
 ## API reference
 
@@ -28,22 +29,22 @@ Requirements for public functions provided by ExBanking module. Any function sho
 @spec create_user(user :: String.t) :: :ok | {:error, :wrong_arguments | :user_already_exists}
 ```
 
- - Function creates new user in the system
- - New user has zero balance of any currency
+ - [x] Function creates new user in the system
+ - [x] New user has zero balance of any currency
 
 ```elixir
 @spec deposit(user :: String.t, amount :: number, currency :: String.t) :: {:ok, new_balance :: number} | {:error, :wrong_arguments | :user_does_not_exist | :too_many_requests_to_user}
 ```
 
- - Increases user’s balance in given currency by amount value
- - Returns new_balance of the user in given format
+ - [x] Increases user’s balance in given currency by amount value
+ - [x] Returns new_balance of the user in given format
 
 ```elixir
 @spec withdraw(user :: String.t, amount :: number, currency :: String.t) :: {:ok, new_balance :: number} | {:error, :wrong_arguments | :user_does_not_exist | :not_enough_money | :too_many_requests_to_user}
 ```
 
- - Decreases user’s balance in given currency by amount value
- - Returns new_balance of the user in given format
+ - [x] Decreases user’s balance in given currency by amount value
+ - [x] Returns new_balance of the user in given format
 
 ```elixir
 @spec get_balance(user :: String.t, currency :: String.t) :: {:ok, balance :: number} | {:error, :wrong_arguments | :user_does_not_exist | :too_many_requests_to_user}

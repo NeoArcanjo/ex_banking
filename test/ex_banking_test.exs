@@ -19,16 +19,29 @@ defmodule ExBankingTest do
       assert {:error, :user_already_exists} = ExBanking.create_user("test")
     end
 
+    test "User name is case sensitive" do
+      ExBanking.create_user("test")
+      assert Client.exists?("test")
+      refute Client.exists?("Test")
+      ExBanking.create_user("Test")
+      assert Client.exists?("Test")
+    end
+
     test "Recusing a not string user name" do
       assert {:error, :wrong_arguments} = ExBanking.create_user(1)
     end
   end
 
   describe "Testing 'get_balance" do
+    setup do
+      ExBanking.create_user("test")
+      :ok
+    end
+
     test "Getting the balance of a existing user" do
       ExBanking.deposit("test", 100.00, "EUR")
-      assert 100.00 = ExBanking.get_balance("test", "EUR")
-      assert 0.00 = ExBanking.get_balance("test", "USD")
+      assert is_number(ExBanking.get_balance("test", "EUR"))
+      assert is_number(ExBanking.get_balance("test", "USD"))
     end
 
     test "Error when getting the balance of a not existing user" do
@@ -39,13 +52,31 @@ defmodule ExBankingTest do
   describe "Testing deposit/3" do
     setup do
       ExBanking.create_user("test")
+      :ok
     end
 
     test "Depositing money to an existing user" do
-      currency = "EUR"
-      current_balance = ExBanking.get_balance("test", currency)
-      ExBanking.deposit("test", 100.00, currency)
-      assert current_balance + 100.00 == ExBanking.get_balance("test", currency)
+      current_balance = ExBanking.get_balance("test", "EUR")
+      euros = ExBanking.deposit("test", 100.00, "EUR")
+      assert current_balance + 100.00 == euros
+      assert current_balance + 100.00 == ExBanking.get_balance("test", "EUR")
+    end
+
+    test "Multiple currencies" do
+      euro_balance = ExBanking.get_balance("test", "EUR")
+      dolar_balance = ExBanking.get_balance("test", "USD")
+      real_balance = ExBanking.get_balance("test", "BRL")
+
+      euros = ExBanking.deposit("test", 100.00, "EUR")
+      dolars = ExBanking.deposit("test", 200.00, "USD")
+      real = ExBanking.deposit("test", 500.00, "BRL")
+
+      assert real_balance + 500.00 == ExBanking.get_balance("test", "BRL")
+      assert real_balance + 500.00 == real
+      assert euro_balance + 100.00 == euros
+      assert euro_balance + 100.00 == ExBanking.get_balance("test", "EUR")
+      assert dolar_balance + 200.00 == dolars
+      assert dolar_balance + 200.00 == ExBanking.get_balance("test", "USD")
     end
 
     test "Error when depositing money to a not existing user" do

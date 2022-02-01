@@ -11,8 +11,7 @@ defmodule ExBanking.Client do
   ## GenServer API
 
   def start_link(name) do
-    # currency = Application.get_env(:money, :default_currency)
-    data = %{name: name, balance: [Money.new(0)]}
+    data = %{name: name, balance: [Money.new(0)], transactions: :queue.new()}
     GenServer.start_link(__MODULE__, data, name: via_tuple(name))
   end
 
@@ -201,17 +200,21 @@ defmodule ExBanking.Client do
 
   ## Private Functions
   defp set_balance(state, balance, currency) do
-    balance =
-      state[:balance]
-      |> Enum.map(fn %{currency: cur} = current ->
-        if to_string(cur) == String.upcase(currency) do
-          balance
-        else
-          current
-        end
-      end)
+    new_balance =
+      if balance.currency in Enum.map(state[:balance], fn %{currency: currency} -> currency end) do
+        state[:balance]
+        |> Enum.map(fn %{currency: cur} = current ->
+          if to_string(cur) == String.upcase(currency) do
+            balance
+          else
+            current
+          end
+        end)
+      else
+        state[:balance] ++ [balance]
+      end
 
-    %{state | balance: balance}
+    %{state | balance: new_balance}
   end
 
   defp do_get_balance(balance, currency) do
