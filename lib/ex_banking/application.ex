@@ -5,11 +5,11 @@ defmodule ExBanking.Application do
 
   use Application
   @registry :currencies
+
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: ExBanking.Worker.start_link(arg)
-      # {ExBanking.Worker, arg}
+      {Task.Supervisor, name: RateLimiter.TaskSupervisor},
       {Registry, [keys: :unique, name: @registry]},
       {ExBanking.UsersSupervisor, []}
     ]

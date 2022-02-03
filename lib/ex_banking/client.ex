@@ -7,13 +7,23 @@ defmodule ExBanking.Client do
   require Logger
 
   @registry :currencies
+  @requests_size_limit 10
 
   ## GenServer API
 
   @spec start_link(any) :: :ignore | {:error, any} | {:ok, pid}
   def start_link(name) do
-    data = %{name: name, balance: [Money.new(0)], transactions: :queue.new()}
+    data = %{
+      name: name,
+      balance: [Money.new(0)],
+      request_queue_size: 0
+    }
+
     GenServer.start_link(__MODULE__, data, name: via_tuple(name))
+  end
+
+  def make_request({_function, [process_name | _args]} = request_handler, from) do
+    process_name |> via_tuple() |> GenServer.cast({:enqueue_request, request_handler, from})
   end
 
   @spec log_state(any) :: any
@@ -28,21 +38,17 @@ defmodule ExBanking.Client do
 
   @spec transfer(any, any, any, any) :: any
   def transfer(process_name, to_user, amount, currency) do
-    # amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
-    {:ok, amount} = Money.parse(amount, currency)
     process_name |> via_tuple() |> GenServer.call({:transfer, to_user, amount, currency})
   end
 
   @spec deposit(String.t(), number, String.t()) :: number
   def deposit(process_name, amount, currency) do
-    # amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
     {:ok, amount} = Money.parse(amount, currency)
     process_name |> via_tuple() |> GenServer.call({:deposit, amount, currency})
   end
 
   @spec withdraw(String.t(), number, String.t()) :: number
   def withdraw(process_name, amount, currency) do
-    # amount = amount |> Float.round(2) |> Kernel.*(100) |> trunc()
     {:ok, amount} = Money.parse(amount, currency)
     process_name |> via_tuple() |> GenServer.call({:withdraw, amount, currency})
   end
@@ -77,45 +83,60 @@ defmodule ExBanking.Client do
 
   @impl true
   def handle_call(:log_state, _from, state) do
-    {:reply, "State: #{inspect(state)}", state}
+    {:reply, "State: #{inspect(state)}",
+     %{state | request_queue_size: state.request_queue_size - 1}}
   end
 
   @impl true
-  def handle_call({:transfer, to_user, amount, currency}, from, state) do
-    Logger.warning(from == self())
+  def handle_call({:transfer, to_user, amount, currency}, _from, state) do
     Logger.info("Verifying balance for #{state[:name]}")
 
     Logger.info("Balance for #{state[:name]}: #{print_money(state[:balance], currency)}")
-
-    balance = decrease(state[:balance], amount, currency)
+    value = Money.parse!(amount, currency)
+    balance = decrease(state[:balance], value, currency)
 
     if Money.negative?(balance) do
       Logger.error("Insufficient funds: #{Money.to_string(balance)}")
 
-      {:reply, :not_enough_money, state}
+      {:reply, :not_enough_money, %{state | request_queue_size: state.request_queue_size - 1}}
     else
       Logger.info("New balance: #{Money.to_string(balance)}")
-      Logger.info("Sending #{Money.to_string(amount)} to #{to_user}")
+      Logger.info("Sending #{Money.to_string(value)} to #{to_user}")
 
-      to_user
-      |> via_tuple()
-      |> GenServer.whereis()
-      |> send({:transfer, self(), amount, currency})
+      make_request({:deposit, [to_user, amount, currency]}, self())
 
       receive do
-        {:ok, to_balance} ->
+        to_balance when is_float(to_balance) ->
           Logger.info("Transfer successful")
+          state = set_balance(state, balance, currency)
 
-          {:reply, {:ok, money_to_float(balance), money_to_float(to_balance)},
-           set_balance(state, balance, currency)}
+          {:reply, {:ok, money_to_float(balance), to_balance},
+           %{state | request_queue_size: state.request_queue_size - 1}}
+
+        :too_many_requests_to_user ->
+          Logger.error("Transfer failed due to too many requests to #{to_user}")
+
+          {:reply, :too_many_requests_to_receiver,
+           %{state | request_queue_size: state.request_queue_size - 1}}
 
         {:error, :not_enough_money} ->
           Logger.error("Transfer failed")
-          {:reply, :not_enough_money, state}
+          {:reply, :not_enough_money, %{state | request_queue_size: state.request_queue_size - 1}}
 
-        _ ->
-          Logger.error("Transfer failed")
-          {:reply, :failed, state}
+        {ref, :ok} ->
+          Logger.info("Transfer successful? #{inspect(ref)}")
+          state = set_balance(state, balance, currency)
+
+          {:reply, {:ok, money_to_float(balance), 0},
+           %{state | request_queue_size: state.request_queue_size - 1}}
+
+        error ->
+          Logger.error("Transfer failed due to error: #{inspect(error)}")
+          {:reply, :failed, %{state | request_queue_size: state.request_queue_size - 1}}
+      after
+        60_000 ->
+          Logger.error("Transfer failed due to timeout")
+          {:reply, :timeout, %{state | request_queue_size: state.request_queue_size - 1}}
       end
     end
   end
@@ -131,11 +152,13 @@ defmodule ExBanking.Client do
     if Money.negative?(balance) do
       Logger.error("Insufficient funds: #{Money.to_string(balance)}")
 
-      {:reply, :not_enough_money, state}
+      {:reply, :not_enough_money, %{state | request_queue_size: state.request_queue_size - 1}}
     else
       Logger.info("New balance: #{Money.to_string(balance)}")
+      state = set_balance(state, balance, currency)
 
-      {:reply, money_to_float(balance), set_balance(state, balance, currency)}
+      {:reply, money_to_float(balance),
+       %{state | request_queue_size: state.request_queue_size - 1}}
     end
   end
 
@@ -148,8 +171,13 @@ defmodule ExBanking.Client do
     balance = increase(state[:balance], amount, currency)
 
     Logger.info("New balance: #{Money.to_string(balance)}")
+    state = set_balance(state, balance, currency)
 
-    {:reply, money_to_float(balance), set_balance(state, balance, currency)}
+    {:reply, money_to_float(balance), %{state | request_queue_size: state.request_queue_size - 1}}
+  rescue
+    e ->
+      Logger.error("Deposit failed: #{inspect(e)}")
+      {:reply, :failed, %{state | request_queue_size: state.request_queue_size - 1}}
   end
 
   @impl true
@@ -159,32 +187,45 @@ defmodule ExBanking.Client do
       |> do_get_balance(currency)
       |> money_to_float()
 
-    {:reply, balance, state}
+    {:reply, balance, %{state | request_queue_size: state.request_queue_size - 1}}
   end
 
-  ###########################################################################
+  # ---------------- Server Callbacks ----------------
 
   @impl true
-  def handle_info({:transfer, from, amount, currency}, state) do
-    balance = increase(state[:balance], amount, currency)
-
-    Logger.info(
-      "Received #{Money.to_string(amount)} to #{Money.to_string(balance)}"
-    )
-
-    state = set_balance(state, balance, currency)
-    Logger.info("Notifying origin...")
-    send(from, {:ok, balance})
+  # No tokens available...enqueue the request
+  def handle_cast(
+        {:enqueue_request, _request_handler, from},
+        %{request_queue_size: queue_size} = state
+      )
+      when queue_size >= @requests_size_limit do
+    Logger.error("Too many requests - #{from}")
+    send(from, :too_many_requests_to_user)
 
     {:noreply, state}
-  rescue
-    e ->
-      Logger.error(Exception.format(:error, e, __STACKTRACE__))
-      send(from, {:error, e})
-      {:noreply, state}
   end
 
-  ###########################################################################
+  def handle_cast({:enqueue_request, request_handler, from}, state) do
+    async_task_request(request_handler, from)
+    {:noreply, %{state | request_queue_size: state.request_queue_size + 1}}
+  end
+
+  @impl true
+  def handle_info({ref, _result}, state) do
+    Process.demonitor(ref, [:flush])
+
+    {:noreply, state}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    {:noreply, state}
+  end
+
+  def handle_info(wtf, state) do
+    Logger.error("Unknown info: #{inspect(wtf)}")
+    {:noreply, state}
+  end
+
   @spec exists?(any) :: boolean
   def exists?(name) do
     Registry.lookup(@registry, name)
@@ -245,4 +286,18 @@ defmodule ExBanking.Client do
 
   defp via_tuple(name),
     do: {:via, Registry, {@registry, name}}
+
+  defp async_task_request(request_handler, from) do
+    start_message = "Request started #{NaiveDateTime.utc_now()}"
+    Logger.info(start_message)
+
+    Task.Supervisor.async_nolink(RateLimiter.TaskSupervisor, fn ->
+      {req_function, req_args} = request_handler
+
+      response = apply(__MODULE__, req_function, req_args)
+      send(from, response)
+
+      Logger.info("Request completed #{NaiveDateTime.utc_now()}")
+    end)
+  end
 end

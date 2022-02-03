@@ -26,12 +26,10 @@ defmodule ExBanking.MixProject do
       {:money, "~> 1.9"},
       # Static analysis and test support
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
-      {:ex_machina, "~> 2.4", only: :test},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:doctor, "~> 0.18.0", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
-      {:excoveralls, "~> 0.10", only: [:dev, :test]},
-      {:mox, "~> 1.0", only: [:dev, :test]}
+      {:excoveralls, "~> 0.10", only: [:dev, :test]}
     ]
   end
 end

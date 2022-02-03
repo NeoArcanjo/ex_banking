@@ -35,7 +35,7 @@ defmodule ExBanking do
       {:error, :user_already_exists}
     else
       UsersSupervisor.start_child(user)
-      :ok
+      Logger.info("User #{user} created")
     end
   end
 
@@ -55,7 +55,13 @@ defmodule ExBanking do
   def deposit(user, amount, currency)
       when is_positive_number(amount) and is_binary(user) and is_binary(currency) do
     if Client.exists?(user) do
-      Client.deposit(user, amount, currency)
+      # Client.deposit(user, amount, currency)
+      Client.make_request({:deposit, [user, amount, currency]}, self())
+
+      receive do
+        value ->
+          value
+      end
     else
       {:error, :user_does_not_exist}
     end
@@ -79,7 +85,13 @@ defmodule ExBanking do
   def withdraw(user, amount, currency)
       when is_positive_number(amount) and is_binary(user) and is_binary(currency) do
     if Client.exists?(user) do
-      Client.withdraw(user, amount, currency)
+      # Client.withdraw(user, amount, currency)
+      Client.make_request({:withdraw, [user, amount, currency]}, self())
+
+      receive do
+        value ->
+          value
+      end
     else
       {:error, :user_does_not_exist}
     end
@@ -97,7 +109,13 @@ defmodule ExBanking do
   """
   def get_balance(user, currency) when is_binary(user) and is_binary(currency) do
     if Client.exists?(user) do
-      Client.get_balance(user, currency)
+      # Client.get_balance(user, currency)
+      Client.make_request({:get_balance, [user, currency]}, self())
+
+      receive do
+        value ->
+          value
+      end
     else
       {:error, :user_does_not_exist}
     end
@@ -126,7 +144,22 @@ defmodule ExBanking do
       when is_binary(from_user) and is_binary(to_user) and is_binary(currency) do
     with {:from, true} <- {:from, Client.exists?(from_user)},
          {:to, true} <- {:to, Client.exists?(to_user)} do
-      Client.transfer(from_user, to_user, amount, currency)
+      # Client.transfer(from_user, to_user, amount, currency)
+      Client.make_request(
+        {:transfer, [from_user, to_user, amount, currency]},
+        self()
+      )
+
+      receive do
+        :too_many_requests_to_user ->
+          :too_many_requests_to_sender
+
+        :too_many_requests_to_receiver ->
+          :too_many_requests_to_receiver
+
+        value ->
+          value
+      end
     else
       {:from, false} -> {:error, :sender_does_not_exist}
       {:to, false} -> {:error, :receiver_does_not_exist}
